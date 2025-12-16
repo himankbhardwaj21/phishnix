@@ -1,0 +1,163 @@
+
+'use client';
+
+import { useState, useEffect, useTransition } from 'react';
+import { useRouter } from 'next/navigation';
+import { useFirebase, useUser } from '@/firebase';
+import { AppHeader } from '@/components/phishnix/header';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Separator } from '@/components/ui/separator';
+import { User, Mail, Save, ShieldQuestion, LoaderCircle } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
+import { useToast } from '@/hooks/use-toast';
+import { updateProfile } from 'firebase/auth';
+
+export default function ProfilePage() {
+  const { user, isUserLoading } = useUser();
+  const { auth } = useFirebase();
+  const router = useRouter();
+  const { toast } = useToast();
+  const [isPending, startTransition] = useTransition();
+
+  const [name, setName] = useState('');
+
+  useEffect(() => {
+    // If loading is finished and there's no user, redirect to login.
+    if (!isUserLoading && !user) {
+      router.push('/login');
+    }
+    // If the user object is available, populate the form fields.
+    if (user) {
+      setName(user.displayName || '');
+    }
+  }, [user, isUserLoading, router]);
+
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!user) {
+        toast({
+            variant: 'destructive',
+            title: 'Authentication Error',
+            description: 'You must be signed in to update your profile.',
+        });
+        return;
+    }
+    startTransition(async () => {
+      try {
+        await updateProfile(user, { displayName: name });
+        // NOTE: Updating phone number on the user object directly via client SDK is not supported.
+        // This would typically be a server-side action with verification.
+        // For now, we only update the display name which is a common client-side operation.
+        
+        toast({
+          title: 'Profile Updated',
+          description: 'Your display name has been saved successfully.',
+        });
+      } catch (error: any) {
+         toast({
+          variant: 'destructive',
+          title: 'Update Failed',
+          description: error.message || 'An unexpected error occurred.',
+        });
+      }
+    });
+  };
+
+  const handlePasswordReset = () => {
+    router.push('/reset-password');
+  };
+
+  // While checking for the user, show a full-page loader.
+  // This prevents the "Please sign in" message from flashing.
+  if (isUserLoading) {
+    return (
+      <div className="flex min-h-screen w-full flex-col">
+        <AppHeader />
+        <main className="flex flex-1 items-center justify-center">
+          <LoaderCircle className="h-10 w-10 animate-spin text-primary" />
+        </main>
+      </div>
+    );
+  }
+  
+  // If there's no user after loading, this component will have already started
+  // the redirect, so we can render null or a minimal loader to avoid flashing content.
+  if (!user) {
+    return (
+       <div className="flex min-h-screen w-full flex-col">
+        <AppHeader />
+        <main className="flex flex-1 items-center justify-center">
+          <p className="text-muted-foreground">Redirecting to login...</p>
+        </main>
+      </div>
+    )
+  }
+
+
+  return (
+    <div className="flex min-h-screen w-full flex-col">
+      <AppHeader />
+      <main className="flex flex-1 flex-col items-center gap-4 p-4 md:gap-8 md:p-10">
+        <div className="w-full max-w-3xl">
+          <h1 className="font-headline text-3xl font-bold tracking-tighter sm:text-4xl md:text-5xl mb-8">
+            My Profile
+          </h1>
+          <Card>
+            <CardContent className="p-6">
+                <div className="space-y-6">
+                  <div className="flex items-center space-x-4">
+                    <Avatar className="h-24 w-24">
+                      <AvatarImage src={user.photoURL || undefined} data-ai-hint="user avatar" />
+                      <AvatarFallback>
+                        <User className="h-12 w-12" />
+                      </AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <h2 className="text-2xl font-bold font-headline">{user.displayName || 'Anonymous User'}</h2>
+                      <p className="text-muted-foreground">{user.email}</p>
+                    </div>
+                  </div>
+                  <Separator />
+                  <form onSubmit={handleSubmit} className="space-y-4 pt-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="name">Full Name</Label>
+                      <div className="relative">
+                        <User className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                        <Input id="name" value={name} onChange={(e) => setName(e.target.value)} className="pl-10" placeholder="Your full name" disabled={isPending}/>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="email">Email Address</Label>
+                      <div className="relative">
+                        <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                        <Input id="email" type="email" defaultValue={user.email || ''} className="pl-10" disabled />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Password</Label>
+                       <Button variant="outline" className="w-full md:w-auto" type="button" onClick={handlePasswordReset} disabled={isPending}>
+                        <ShieldQuestion className="mr-2 h-4 w-4" />
+                        Reset Password
+                      </Button>
+                      <p className="text-sm text-muted-foreground">Reset your password via a link sent to your email.</p>
+                    </div>
+
+                    <Separator className="!mt-6 !mb-4" />
+
+                    <Button type="submit" className="w-full md:w-auto" disabled={isPending}>
+                      {isPending ? <LoaderCircle className="animate-spin mr-2" /> : <Save className="mr-2 h-4 w-4" />}
+                      {isPending ? 'Saving...' : 'Save Changes'}
+                    </Button>
+                  </form>
+                </div>
+            </CardContent>
+          </Card>
+        </div>
+      </main>
+    </div>
+  );
+}
